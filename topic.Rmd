@@ -1,0 +1,103 @@
+---
+title: "Topic Modelling in R (The Game is Afoot)"
+author: "athemiiix"
+date: "January 24, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Data Downloaded and Prepped
+```{r}
+library(gutenbergr)
+library(dplyr)
+library(tidyr)
+library(tidyr)
+library(stringr)
+library(tidytext)
+
+sherlock_raw <- gutenberg_download(1661)
+
+sherlock_raw %>%
+  mutate(story = ifelse(str_detet(text, "ADVENTURE"), text, NA) %>% #count(story)
+           fill(story) %>%
+           filter(story) %>% 
+           filter(story != "THE ADVENTURES OF SHERLOCK HOLMES") %>% 
+           mutate(story = factor(story, levels = unique(story))) #plot in order of the doc names
+           
+#transform text into tidy data structure
+
+tidy_sherlock <- sherlock %>% 
+  mutate(line = row_number()) %>% 
+  unnest_tokens(word, text) %>% 
+  anti_join(stop_words) %>%  #remove stop_words using the dataset included in the tidy text package. tidy_sherlock %>% count(word, sort = TRUE)
+  filter(word != "holmes") #remove any other stop words depending on the context - holmes in this case
+
+```
+
+
+```{r}
+library(ggplot2)
+
+tidy_sherlock %>% 
+  count(story, word, sort = TRUE) %>% 
+  bind_tf_idf(word, story, n) %>% #tfidf tells how important is this word in this document compared to the other documents in this group 
+  group_by(story) %>% 
+  top_n(10) %>% 
+  ungroup %>% 
+  mutate(word = reorder(word, tf_idf)) %>% 
+  ggplot(aes(word, tf_idf, fill = story)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~story, scales = "free") +
+  coord_flip()
+
+#tfidf is a great explporatory tool before you go into topic modelling
+```
+
+#Implement topic modeling
+```{r}
+library(stm)
+library(quanteda)
+
+tidy_sherlock %>% 
+  count(story, word, sort=TRUE) %>% 
+  cast_dfm(story,word,n)
+
+#train topic model
+topic_model <- stm(sherlock_dfm, K = 6, init.type = "Spectral")
+#how many topics do you think there are in your text
+#which words contribute to which topics? which topics contribute to which document?
+
+summary(topic_model)
+
+```
+
+```{r}
+#tidy it up so we can ggplot2 and dpylr manipulate
+
+td_beta <- tidy(topic_model) %>% 
+  group_by(topic) %>% 
+  top_n(10) %>% 
+  ungroup %>% 
+  mutate(term = reorder(term, beta)) %>% 
+  ggplot(aes(term, beta, fill = topic)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~topic , scales = "free") +
+  coord_flip()
+#beta matrix says what are the words that contribute to each topic
+
+td_gamme <- tidy(topic_model, matrix = "gamma"
+                 document_names = rownames(sherlock_dfm))
+
+ggplot(td_gamma, aes(gamma, fill = as.factor(topic))) +
+  geom_histogram(show.legend = FALSE) +
+  facect_wrap(~topic, ncol=3)
+
+#gamma matrix: in this document, how much did these topics contribute to it
+#our topic modeling did a good job of taking the STORY and putting them into 1 topic. we always had 1 item correct, and 9 not... it was good
+```
+
+
+
